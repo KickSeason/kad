@@ -24,3 +24,7 @@
 [[constraint]]
   name = "github.com/google/uuid"
   version = "1.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/kataras/golog"

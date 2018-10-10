@@ -7,9 +7,27 @@
   revision = "d460ce9f8df2e77fb1ba55ca87fafed96c607494"
   version = "v1.0.0"
 
+[[projects]]
+  branch = "master"
+  name = "github.com/kataras/golog"
+  packages = ["."]
+  revision = "03be101463868edc5a81f094fc68a5f6c1b5503a"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/kataras/pio"
+  packages = [".","terminal"]
+  revision = "a9733b5b6b83d32b479aacd51d26ef6018261963"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["unix"]
+  revision = "4497e2df6f9e69048a54498c7affbbec3294ad47"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "102b6a77e788da34c6c82d1cd79e0e04df882c0c087f269d9dd415ef0905c571"
+  inputs-digest = "8e559e2df91e5382468a0ef4f81eafba05230fcd3e65495efdfe42a8b1634cda"
   solver-name = "gps-cdcl"
   solver-version = 1

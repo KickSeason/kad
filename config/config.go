@@ -1,69 +1,51 @@
 package config
 
 import (
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"log"
+	"kad/node"
 
-	"github.com/google/uuid"
+	"github.com/kataras/golog"
 )
 
 //NodeID the id of this node
-var NodeID []byte
+var NodeID node.NodeID
+
+//Peers peers that configured
+var Peers []string
 
 func init() {
-	test()
-	data, err := ioutil.ReadFile("./config.json")
-	defer func() {
-		if len(NodeID) == 0 {
-			NodeID = uuid.NodeID()
-		}
-		flush()
-	}()
+	data, err := ioutil.ReadFile("./node.json")
 	if err != nil {
-		log.Println(err)
+		golog.Error(err)
 	}
 	var config struct {
-		NodeID []byte `json:"NodeID"`
+		NodeID string `json:"NodeID"`
 	}
 	err = json.Unmarshal(data, &config)
 	if err != nil {
-		log.Println(err)
+		golog.Error(err)
 	}
-	NodeID = config.NodeID
+	NodeID, err = node.NewIDFromString(config.NodeID)
+	if err != nil {
+		golog.Error(err)
+		NodeID = node.NewNodeID()
+		flush()
+	}
 }
 
 func flush() {
 	info := struct {
-		NodeID []byte `json:"NodeID"`
+		NodeID string `json:"NodeID"`
 	}{
-		NodeID: NodeID,
+		NodeID: NodeID.String(),
 	}
 	data, err := json.Marshal(info)
 	if err != nil {
-		log.Println(err)
+		golog.Error(err)
 	}
-	err = ioutil.WriteFile("./config.json", data, 0644)
+	err = ioutil.WriteFile("./node.json", data, 0644)
 	if err != nil {
-		log.Println(err)
+		golog.Error(err)
 	}
-}
-
-func test() {
-	n := []byte{0, 0}
-	for _, v := range uuid.NodeID() {
-		n = append(n, byte(v))
-	}
-	var mySlice = []byte{244, 244, 244, 244, 244, 244, 244, 244}
-	data := binary.BigEndian.Uint64(mySlice)
-	fmt.Println(data)
-	fmt.Println(n)
-	fmt.Println(mySlice)
-	data = binary.BigEndian.uin
-	fmt.Println(data)
-	uid := uuid.New()
-	fmt.Println(uid.String())
-	fmt.Println(uid.ID())
 }

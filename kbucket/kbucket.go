@@ -1,23 +1,28 @@
 package kbucket
 
+import (
+	"kad/node"
+)
+
 //Kbucket kbucket implement
 type Kbucket struct {
+	routes map[int][]node.Node
+	self   node.Node
+	k      int
 }
 
-//Node information about a node
-type Node struct {
-	NodeID []byte
-	IP     string
-	Port   int
-}
+const (
+	k     = 8
+	alpha = 3
+)
 
 //New create a kbucket
-func New(nodeID []byte) *Kbucket {
+func New(nodeID node.NodeID) *Kbucket {
 	return &Kbucket{}
 }
 
-//Initialize init a kbucket
-func (k *Kbucket) Initialize() {
+//Establish init a kbucket
+func (k *Kbucket) Establish() {
 
 }
 
@@ -27,6 +32,6 @@ func (k *Kbucket) FindNode() {
 }
 
 //AddNode to add a node
-func (k *Kbucket) AddNode(node Node) {
+func (k *Kbucket) AddOrUpdate(node node.Node) {
 
 }

@@ -4,13 +4,29 @@ import (
 	"kad/config"
 	"kad/kbucket"
 	"kad/server"
-	"log"
+
+	"github.com/kataras/golog"
 )
 
 func main() {
-	log.Println("nodeid: " + string(config.NodeID))
-	srv := server.NewServer(config.NodeID)
-	srv.Start()
+	golog.Info("nodeid: " + string(config.NodeID.String()))
+	// bb, e := config.NodeID.ToByte()
+	// if e != nil {
+	// 	golog.Fatal(e)
+	// }
+	// golog.Info(bb)
+	// b, e := node.NewIDFromByte(bb)
+	// if e != nil {
+	// 	golog.Fatal(e)
+	// }
+	// golog.Info(b)
 	bucket := kbucket.New(config.NodeID)
-	bucket.Initialize()
+	s := server.Config{
+		Addr:    "127.0.0.1:15200",
+		ID:      config.NodeID,
+		Kbucket: bucket,
+	}
+	srv := server.NewServer(s)
+	srv.Start()
+	bucket.Establish()
 }
