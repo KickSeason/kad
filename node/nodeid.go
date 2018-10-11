@@ -36,7 +36,7 @@ func (n NodeID) Equal(m NodeID) bool {
 
 //ToByte convert into []byte
 func (n NodeID) ToByte() ([]byte, error) {
-	return uuid.UUID(n).MarshalText()
+	return uuid.UUID(n).MarshalBinary()
 }
 
 //Length the length of nodeid

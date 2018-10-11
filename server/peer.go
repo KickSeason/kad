@@ -1,40 +1,69 @@
 package server
 
 import (
+	"kad/node"
 	"net"
+	"time"
+
+	"github.com/kataras/golog"
+)
+
+const (
+	peerOut = 10 * time.Second
 )
 
 //Peer a remote node
 type Peer struct {
-	addr string
-	conn *net.TCPConn
+	id     node.NodeID
+	addr   string
+	conn   *net.TCPConn
+	timer  *time.Timer
+	done   chan error
+	closed bool
 }
 
-//Peers remote nodes
-type Peers map[string]Peer
-
-//NewPeers create a new peers
-func NewPeers() *Peers {
-	p := Peers(make(map[string]Peer, 64))
-	return &p
-}
-func (ps Peers) Contain(p Peer) bool {
-	_, ok := ps[p.addr]
-	return ok
-}
-func (ps Peers) Add(p Peer) {
-	ps[p.addr] = p
+func NewPeer(addr string, conn *net.TCPConn) *Peer {
+	p := &Peer{
+		addr:   conn.RemoteAddr().String(),
+		conn:   conn,
+		done:   make(chan error, 1),
+		closed: false,
+	}
+	p.timer = time.NewTimer(peerOut)
+	go p.run()
+	return p
 }
 
-func (ps Peers) Remove(p Peer) {
-	delete(ps, p.addr)
+func (p *Peer) run() {
+	for {
+		select {
+		case <-p.timer.C:
+			// err := p.server.sendPing(p)
+			// if err != nil {
+			// 	golog.Error(err)
+			// }
+			continue
+		}
+	}
+}
+
+func (p *Peer) SetID(id node.NodeID) {
+	p.id = id
 }
 
 //Disconnect
-func (p Peer) Disconnect(err error) {
-
+func (p *Peer) Disconnect(err error) {
+	golog.Info("[Peer.Disconnect] disconnect peer: ", p.addr, " reason: ", err)
+	p.close(err)
 }
 
-func (p Peer) Write(m *Message) error {
+func (p *Peer) Write(m *Message) error {
+	p.timer.Reset(peerOut)
 	return m.Encode(p.conn)
+}
+
+func (p *Peer) close(err error) {
+	golog.Warn("[peer.close] close peer: ", p.addr)
+	p.timer.Stop()
+	p.conn.Close()
 }

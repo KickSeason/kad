@@ -18,18 +18,18 @@ func NewTransport(s *Server) *Transport {
 	}
 }
 
-func (t *Transport) Dial(addr string, ot time.Duration) error {
-	var tcpaddr net.TCPAddr
-	localaddr, err := net.ResolveTCPAddr("tcp", addr)
+func (t *Transport) Dial(addr string, ot time.Duration) (*Peer, error) {
+	destaddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
-		return err
+		return &Peer{}, err
 	}
-	conn, err := net.DialTCP("tcp", localaddr, &tcpaddr)
+	conn, err := net.DialTCP("tcp", nil, destaddr)
 	if err != nil {
-		return err
+		return &Peer{}, err
 	}
-	go t.handleConn(conn)
-	return nil
+	p := NewPeer(conn.RemoteAddr().String(), conn)
+	go t.handleConn(p)
+	return p, nil
 }
 
 func (t *Transport) Accept() {
@@ -41,6 +41,7 @@ func (t *Transport) Accept() {
 	if err != nil {
 		golog.Fatal(err)
 	}
+	golog.Info("[transport.accept] listening on: ", hawServer.String())
 	t.listener = listen
 
 	for {
@@ -53,27 +54,25 @@ func (t *Transport) Accept() {
 			continue
 		}
 		conn.SetKeepAlive(true)
-		go t.handleConn(conn)
+		p := NewPeer(conn.RemoteAddr().String(), conn)
+		go t.handleConn(p)
 	}
 }
 
-func (t *Transport) handleConn(conn *net.TCPConn) {
+func (t *Transport) handleConn(p *Peer) {
 	var err error
-	p := Peer{
-		addr: conn.RemoteAddr().String(),
-		conn: conn,
-	}
 	defer func() {
 		p.Disconnect(err)
+		t.server.unregister <- p
 	}()
 	t.server.register <- p
 	for {
 		msg := &Message{}
-		if err := msg.Decode(conn); err != nil {
+		if err = msg.Decode(p.conn); err != nil {
 			golog.Error(err)
 			return
 		}
-		if err := t.server.handleMessage(p, msg); err != nil {
+		if err = t.server.handleMessage(p, msg); err != nil {
 			golog.Error(err)
 			return
 		}
@@ -83,4 +82,8 @@ func (t *Transport) handleConn(conn *net.TCPConn) {
 func (t *Transport) isCloseError(err error) bool {
 	golog.Error(err)
 	return false
+}
+
+func (t *Transport) Close() {
+	t.listener.Close()
 }

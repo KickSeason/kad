@@ -12,12 +12,43 @@ import (
 var NodeID node.NodeID
 
 //Peers peers that configured
-var Peers []string
+var Seeds []string
+
+//Port server port
+var Port int
 
 func init() {
-	data, err := ioutil.ReadFile("./node.json")
+	err := readConfig()
+	if err != nil {
+		golog.Fatal(err)
+	}
+	err = readNodeInfo()
+	if err != nil {
+		golog.Fatal(err)
+	}
+}
+func readConfig() error {
+	data, err := ioutil.ReadFile("./config.json")
+	if err != nil {
+		return err
+	}
+	var config struct {
+		Port  int      `json:"port"`
+		Seeds []string `json:"seeds"`
+	}
+	err = json.Unmarshal(data, &config)
 	if err != nil {
 		golog.Error(err)
+	}
+	Port = config.Port
+	Seeds = config.Seeds
+	return nil
+}
+
+func readNodeInfo() error {
+	data, err := ioutil.ReadFile("./node.json")
+	if err != nil {
+		return err
 	}
 	var config struct {
 		NodeID string `json:"NodeID"`
@@ -30,11 +61,11 @@ func init() {
 	if err != nil {
 		golog.Error(err)
 		NodeID = node.NewNodeID()
-		flush()
+		persist()
 	}
+	return nil
 }
-
-func flush() {
+func persist() {
 	info := struct {
 		NodeID string `json:"NodeID"`
 	}{

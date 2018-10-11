@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/kataras/golog"
 )
 
 const (
@@ -63,15 +61,12 @@ func (m *Message) Decode(r io.Reader) error {
 	if m.magic != MAGIC {
 		return errors.New("magic not match")
 	}
-	golog.Info(m.magic)
 	if err := binary.Read(r, binary.LittleEndian, &m.code); err != nil {
 		return err
 	}
-	golog.Info(m.code)
 	if err := binary.Read(r, binary.LittleEndian, &m.length); err != nil {
 		return err
 	}
-	golog.Info("length: ", m.length)
 	return m.DecodeData(r)
 }
 
@@ -84,7 +79,6 @@ func (m *Message) DecodeData(r io.Reader) error {
 	if n != int64(m.length) {
 		return fmt.Errorf("expected to read %d bytes, but got %d bytes", m.length, n)
 	}
-	golog.Info(buf.String())
 	m.data = buf.Bytes()
 	return nil
 }
