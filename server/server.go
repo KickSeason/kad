@@ -78,7 +78,10 @@ func (s *Server) run() {
 		case <-s.ticker.C:
 			golog.Info("[server.tick] ", s.peers)
 		case n := <-s.config.Kbucket.Ping:
-			s.dial(n)
+			err := s.dial(n)
+			if err != nil {
+				s.config.Kbucket.RemoveNode(n)
+			}
 		}
 	}
 }

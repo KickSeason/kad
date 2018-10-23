@@ -47,7 +47,7 @@ func (t *Transport) Accept() {
 	for {
 		conn, err := listen.AcceptTCP()
 		if err != nil {
-			golog.Error(err)
+			golog.Error("[transport][accept]", err)
 			if t.isCloseError(err) {
 				break
 			}
