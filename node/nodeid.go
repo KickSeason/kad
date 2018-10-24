@@ -31,7 +31,7 @@ func (n NodeID) String() string {
 
 //Equal to compare two nodeid
 func (n NodeID) Equal(m NodeID) bool {
-	return true
+	return n.String() == m.String()
 }
 
 //ToByte convert into []byte
