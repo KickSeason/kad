@@ -7,6 +7,7 @@ import (
 	"github.com/kataras/golog"
 )
 
+//KQue a queue to store nodes
 type KQue struct {
 	que    []node.Node
 	k      int

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"kad/config"
 	"kad/kbucket"
@@ -125,6 +126,45 @@ func (s *Server) handlePong(p *Peer, m *Message) error {
 	golog.Info("[server.handlepong] recieve pong from node: ", p.addr, nid.String())
 	s.config.Kbucket.AddNode(n)
 	return nil
+}
+
+func (s *Server) handleFind(p *Peer, m *Message) error {
+	nid, err := node.NewIDFromByte(m.data)
+	if err != nil {
+		return err
+	}
+	ns, err := s.config.Kbucket.Find(nid)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(ns)
+	if err != nil {
+		return err
+	}
+	msg := NewMessage(MAGIC, MSgFindAck, data)
+	return p.Write(msg)
+}
+
+func (s *Server) handleFindAck(p *Peer, m *Message) error {
+	var ns []node.Node
+	err := json.Unmarshal(m.data, ns)
+	if err != nil {
+		return err
+	}
+	for _, v := range ns {
+		s.config.Kbucket.AddNode(v)
+		//TODO: send find
+	}
+	return nil
+}
+
+func (s *Server) sendFind(p *Peer, nid node.NodeID) error {
+	data, err := nid.ToByte()
+	if err != nil {
+		return err
+	}
+	msg := NewMessage(MAGIC, MSGFind, data)
+	return p.Write(msg)
 }
 
 func (s *Server) sendPong(p *Peer, nid node.NodeID) error {

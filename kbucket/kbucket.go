@@ -117,7 +117,11 @@ func (k *Kbucket) remove(n node.Node) {
 	return
 }
 
+//Find find alpha nodes that are closest to the nid
 func (k *Kbucket) Find(nid node.NodeID) (ns []node.Node, err error) {
+	if k.self.ID.Equal(nid) {
+		return []node.Node{*k.self}, nil
+	}
 	dist, err := node.CalDistance(nid, k.self.ID)
 	if err != nil {
 		golog.Error(err)
@@ -163,6 +167,9 @@ func (k *Kbucket) Find(nid node.NodeID) (ns []node.Node, err error) {
 }
 
 func (k *Kbucket) FindOne(nid node.NodeID) (node.Node, error) {
+	if k.self.ID.Equal(nid) {
+		return *k.self, nil
+	}
 	dist, err := node.CalDistance(nid, k.self.ID)
 	if err != nil {
 		golog.Error(err)

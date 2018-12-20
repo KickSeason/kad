@@ -21,8 +21,10 @@ type Message struct {
 type MessageType string
 
 const (
-	MSGPing MessageType = "ping"
-	MSGPong MessageType = "pong"
+	MSGPing    MessageType = "ping"
+	MSGPong    MessageType = "pong"
+	MSGFind    MessageType = "find"
+	MSgFindAck MessageType = "fdack"
 )
 
 var CodeMap = map[MessageType]uint32{

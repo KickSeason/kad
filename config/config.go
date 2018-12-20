@@ -17,6 +17,9 @@ var Seeds []string
 //Port server port
 var Port int
 
+//Address bind
+var Address string
+
 func init() {
 	err := readConfig()
 	if err != nil {
@@ -33,8 +36,9 @@ func readConfig() error {
 		return err
 	}
 	var config struct {
-		Port  int      `json:"port"`
-		Seeds []string `json:"seeds"`
+		Port    int      `json:"port"`
+		Seeds   []string `json:"seeds"`
+		Address string   `json:"address"`
 	}
 	err = json.Unmarshal(data, &config)
 	if err != nil {
@@ -42,6 +46,7 @@ func readConfig() error {
 	}
 	Port = config.Port
 	Seeds = config.Seeds
+	Address = config.Address
 	return nil
 }
 
