@@ -1,7 +1,6 @@
 package server
 
 import (
-	"kad/node"
 	"net"
 	"time"
 
@@ -14,7 +13,6 @@ const (
 
 //Peer a remote node
 type Peer struct {
-	id     node.NodeID
 	addr   string
 	conn   *net.TCPConn
 	timer  *time.Timer
@@ -45,10 +43,6 @@ func (p *Peer) run() {
 			continue
 		}
 	}
-}
-
-func (p *Peer) SetID(id node.NodeID) {
-	p.id = id
 }
 
 //Disconnect

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -33,7 +34,7 @@ func (t *Transport) Dial(addr string, ot time.Duration) (*Peer, error) {
 }
 
 func (t *Transport) Accept() {
-	hawServer, err := net.ResolveTCPAddr("tcp", t.server.config.Addr)
+	hawServer, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", t.server.config.IP.String(), t.server.config.Port))
 	if err != nil {
 		golog.Fatal(err)
 	}

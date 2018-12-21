@@ -1,4 +1,4 @@
-package node
+package kbucket
 
 import (
 	"github.com/google/uuid"

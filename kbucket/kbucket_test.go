@@ -1,54 +1,53 @@
 package kbucket
 
 import (
-	"kad/node"
 	"testing"
 )
 
 func TestFind(t *testing.T) {
-	id, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000000")
-	n := node.Node{
+	id, _ := NewIDFromString("00000000-0000-0000-0000-000000000000")
+	n := Node{
 		ID:    id,
 		Addr:  "addr",
-		State: node.NSNil,
+		State: NSNil,
 	}
 	k := New(&n)
-	id0, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000001")
-	id1, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000002")
-	id2, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000003")
-	id3, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000004")
-	nodes := []node.Node{
-		node.Node{
+	id0, _ := NewIDFromString("00000000-0000-0000-0000-000000000001")
+	id1, _ := NewIDFromString("00000000-0000-0000-0000-000000000002")
+	id2, _ := NewIDFromString("00000000-0000-0000-0000-000000000003")
+	id3, _ := NewIDFromString("00000000-0000-0000-0000-000000000004")
+	nodes := []Node{
+		Node{
 			ID:    id0,
 			Addr:  "addr0",
-			State: node.NSNil,
+			State: NSNil,
 		},
-		node.Node{
+		Node{
 			ID:    id1,
 			Addr:  "addr1",
-			State: node.NSNil,
+			State: NSNil,
 		},
-		node.Node{
+		Node{
 			ID:    id2,
 			Addr:  "addr2",
-			State: node.NSNil,
+			State: NSNil,
 		},
-		node.Node{
+		Node{
 			ID:    id3,
 			Addr:  "addr3",
-			State: node.NSNil,
+			State: NSNil,
 		},
 	}
 	for _, v := range nodes {
 		k.AddNode(v)
 	}
-	nid, _ := node.NewIDFromString("00000000-0000-0000-0000-000000000005")
+	nid, _ := NewIDFromString("00000000-0000-0000-0000-000000000005")
 	res, e := k.FindOne(nid)
 	if e != nil {
-		t.Error("[Kbucket.FindOne] ", e)
+		t.Error("[FindOne] ", e)
 	}
 	t.Log(res)
 	if res.Addr != "addr3" {
-		t.Error("[Kbucket.FindOne] closest one != 'addr3'")
+		t.Error("[FindOne] closest one != 'addr3'")
 	}
 }

@@ -6,52 +6,90 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+
+	"github.com/kataras/golog"
+
+	"github.com/KickSeason/kad/kbucket"
 )
 
+type MsgType uint8
+
 const (
-	MAGIC = 0x7596
+	MSGPing    MsgType = 0x01
+	MSGPong    MsgType = 0x02
+	MSGFind    MsgType = 0x03
+	MSgFindAck MsgType = 0x04
+	MSGStore   MsgType = 0x05
+)
+
+type PingMsg struct {
+	NodeID kbucket.NodeID `json: "nodeid"`
+}
+
+type PongMsg struct {
+	NodeID kbucket.NodeID `json: "nodeid"`
+}
+
+type FindMsg struct {
+	NodeID kbucket.NodeID `json: "nodeid"`
+}
+
+type FindAckMsg struct {
+	NodeID kbucket.NodeID `json: "nodeid"`
+	Nodes  []kbucket.Node `json: "nodes"`
+}
+type StoreMsg struct {
+	NodeID kbucket.NodeID `json: "nodeid"`
+	key    string         `json: "key"`
+	value  string         `json: "value"`
+}
+
+const (
+	MAGIC uint16 = 0x7596
 )
 
 type Message struct {
-	magic  uint32
-	code   uint32
+	magic  uint16
+	code   MsgType
+	ip     [4]byte
+	port   uint32
 	length uint32
 	data   []byte
 }
-type MessageType string
 
-const (
-	MSGPing    MessageType = "ping"
-	MSGPong    MessageType = "pong"
-	MSGFind    MessageType = "find"
-	MSgFindAck MessageType = "fdack"
-)
-
-var CodeMap = map[MessageType]uint32{
-	MSGPing: 0x00F1,
-	MSGPong: 0x01F1,
-}
-
-func NewMessage(magic uint32, mtype MessageType, data []byte) *Message {
-	return &Message{
+func NewMessage(magic uint16, mtype MsgType, ip net.IP, port uint32, data []byte) *Message {
+	m := &Message{
 		magic:  magic,
-		code:   CodeMap[mtype],
+		code:   mtype,
+		port:   port,
 		length: uint32(len(data)),
 		data:   data,
 	}
+	iparray := []byte(ip.To4())
+	for i := 0; i < 4; i++ {
+		m.ip[i] = iparray[i]
+	}
+	return m
 }
 
 func (m *Message) Encode(w io.Writer) error {
-	if err := binary.Write(w, binary.LittleEndian, &m.magic); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, m.magic); err != nil {
 		return err
 	}
-	if err := binary.Write(w, binary.LittleEndian, &m.code); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, m.code); err != nil {
 		return err
 	}
-	if err := binary.Write(w, binary.LittleEndian, &m.length); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, m.ip); err != nil {
 		return err
 	}
-	if err := binary.Write(w, binary.LittleEndian, &m.data); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, m.port); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, m.length); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, m.data); err != nil {
 		return err
 	}
 	return nil
@@ -63,9 +101,19 @@ func (m *Message) Decode(r io.Reader) error {
 	if m.magic != MAGIC {
 		return errors.New("magic not match")
 	}
+	golog.Info("read magic", m.magic)
 	if err := binary.Read(r, binary.LittleEndian, &m.code); err != nil {
 		return err
 	}
+	golog.Info("read code", m.code)
+	if err := binary.Read(r, binary.LittleEndian, &m.ip); err != nil {
+		return err
+	}
+	golog.Info("read ip", m.ip)
+	if err := binary.Read(r, binary.LittleEndian, &m.port); err != nil {
+		return err
+	}
+	golog.Info("read port", m.port)
 	if err := binary.Read(r, binary.LittleEndian, &m.length); err != nil {
 		return err
 	}

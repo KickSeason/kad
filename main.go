@@ -1,26 +1,28 @@
 package main
 
 import (
-	"fmt"
-	"kad/config"
-	"kad/kbucket"
-	"kad/node"
-	"kad/server"
+	"net"
+
+	"github.com/KickSeason/kad/config"
+	"github.com/KickSeason/kad/kbucket"
+	"github.com/KickSeason/kad/server"
 
 	"github.com/kataras/golog"
 )
 
 func main() {
 	golog.Info("nodeid: " + string(config.NodeID.String()))
-	n := &node.Node{
-		Addr: fmt.Sprintf("%s:%d", config.Address, config.Port),
+	ip := net.ParseIP(config.Address)
+	n := &kbucket.Node{
+		IP:   ip,
+		Port: config.Port,
 		ID:   config.NodeID,
 	}
-	bucket := kbucket.New(n)
+	kb := kbucket.New(n)
 	s := server.Config{
-		Addr:    fmt.Sprintf("%s:%d", localhost, config.Port),
-		ID:      config.NodeID,
-		Kbucket: bucket,
+		IP:      ip,
+		Port:    config.Port,
+		Kbucket: kb,
 		Seeds:   config.Seeds,
 	}
 	srv := server.NewServer(s)

@@ -1,8 +1,9 @@
-package node
+package kbucket
 
 import (
 	"bytes"
-	"kad/util"
+
+	"github.com/KickSeason/kad/util"
 )
 
 //Distance distance between nodes

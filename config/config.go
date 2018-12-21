@@ -3,19 +3,19 @@ package config
 import (
 	"encoding/json"
 	"io/ioutil"
-	"kad/node"
 
+	"github.com/KickSeason/kad/kbucket"
 	"github.com/kataras/golog"
 )
 
 //NodeID the id of this node
-var NodeID node.NodeID
+var NodeID kbucket.NodeID
 
-//Peers peers that configured
+//Seeds peers that configured
 var Seeds []string
 
 //Port server port
-var Port int
+var Port uint32
 
 //Address bind
 var Address string
@@ -36,7 +36,7 @@ func readConfig() error {
 		return err
 	}
 	var config struct {
-		Port    int      `json:"port"`
+		Port    uint32   `json:"port"`
 		Seeds   []string `json:"seeds"`
 		Address string   `json:"address"`
 	}
@@ -62,10 +62,10 @@ func readNodeInfo() error {
 	if err != nil {
 		golog.Error(err)
 	}
-	NodeID, err = node.NewIDFromString(config.NodeID)
+	NodeID, err = kbucket.NewIDFromString(config.NodeID)
 	if err != nil {
 		golog.Error(err)
-		NodeID = node.NewNodeID()
+		NodeID = kbucket.NewNodeID()
 		persist()
 	}
 	return nil

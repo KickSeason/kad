@@ -1,8 +1,9 @@
 package kbucket
 
 import (
-	"kad/node"
 	"testing"
+
+	"github.com/KickSeason/kad/node"
 )
 
 func TestFindClosestN(t *testing.T) {
