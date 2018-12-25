@@ -71,6 +71,9 @@ func (kq *KQue) update(n Node) {
 			arr = append(arr, v)
 		}
 	}
+	if n.State == NSWaitPong {
+		n.State = NSNil
+	}
 	arr = append(arr, n)
 	kq.que = arr
 }
@@ -85,13 +88,12 @@ func (kq *KQue) updateAdd(n Node) {
 	}
 	head := kq.que[0]
 	if head.State == NSWaitPong {
-		kq.update(head)
 		return
 	}
 	if head.State == NSNil {
 		head.State = NSWaitPong
 		kq.que[0] = head
-		kq.bucket.send(NPing, head)
+		kq.bucket.send(MailPing, []interface{}{head})
 	}
 }
 

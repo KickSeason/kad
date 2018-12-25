@@ -8,8 +8,6 @@ import (
 	"io"
 	"net"
 
-	"github.com/kataras/golog"
-
 	"github.com/KickSeason/kad/kbucket"
 )
 
@@ -33,10 +31,12 @@ type PongMsg struct {
 
 type FindMsg struct {
 	NodeID kbucket.NodeID `json: "nodeid"`
+	FindID kbucket.NodeID `json: "findid"`
 }
 
 type FindAckMsg struct {
 	NodeID kbucket.NodeID `json: "nodeid"`
+	FindID kbucket.NodeID `json: "findid"`
 	Nodes  []kbucket.Node `json: "nodes"`
 }
 type StoreMsg struct {
@@ -89,6 +89,9 @@ func (m *Message) Encode(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, m.length); err != nil {
 		return err
 	}
+	if m.length == 0 {
+		return nil
+	}
 	if err := binary.Write(w, binary.LittleEndian, m.data); err != nil {
 		return err
 	}
@@ -101,19 +104,15 @@ func (m *Message) Decode(r io.Reader) error {
 	if m.magic != MAGIC {
 		return errors.New("magic not match")
 	}
-	golog.Info("read magic", m.magic)
 	if err := binary.Read(r, binary.LittleEndian, &m.code); err != nil {
 		return err
 	}
-	golog.Info("read code", m.code)
 	if err := binary.Read(r, binary.LittleEndian, &m.ip); err != nil {
 		return err
 	}
-	golog.Info("read ip", m.ip)
 	if err := binary.Read(r, binary.LittleEndian, &m.port); err != nil {
 		return err
 	}
-	golog.Info("read port", m.port)
 	if err := binary.Read(r, binary.LittleEndian, &m.length); err != nil {
 		return err
 	}

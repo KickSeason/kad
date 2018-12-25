@@ -2,6 +2,7 @@ package kbucket
 
 import (
 	"errors"
+	"net"
 	"sort"
 	"time"
 
@@ -9,31 +10,48 @@ import (
 )
 
 type (
-	NoteType uint8
-	Note     struct {
-		Type   NoteType
-		Arg    interface{}
+	notetype uint8
+	MailType uint8
+	note     struct {
+		typ    notetype
+		arg    interface{}
 		result chan interface{}
 	}
+	Mail struct {
+		Type   MailType
+		Arg    []interface{}
+		Result chan interface{}
+	}
+	KbConfig struct {
+		Seeds   []string
+		LocalIP net.IP
+		Port    uint32
+		ID      NodeID
+	}
 	Kbucket struct {
+		config   *KbConfig
 		routes   map[int]KQue
 		Self     *Node
 		store    *Storage
 		k        int
 		alpha    int
 		ticker   *time.Ticker
-		receiver chan Note
-		Sender   chan Note
+		receiver chan note
+		Sender   chan Mail
 	}
 )
 
 const (
-	nDelNode NoteType = 0x01
-	nAddNode NoteType = 0x02
-	nFindOne NoteType = 0x03
-	nFind    NoteType = 0x04
-	nStore   NoteType = 0x05
-	NPing
+	nDelNode notetype = 0x01
+	nAddNode notetype = 0x02
+	nFindOne notetype = 0x03
+	nFind    notetype = 0x04
+	nStore   notetype = 0x05
+)
+
+const (
+	MailPing MailType = 0x06
+	MailFind MailType = 0x07
 )
 const (
 	kcount = 8
@@ -42,19 +60,24 @@ const (
 )
 
 //New create a kbucket
-func New(local *Node) *Kbucket {
+func New(config *KbConfig) *Kbucket {
+	n := NewNode(config.ID, config.LocalIP, config.Port)
 	k := &Kbucket{
+		config:   config,
 		routes:   make(map[int]KQue, 64),
-		Self:     local,
+		Self:     &n,
 		store:    NewStorage(),
 		k:        kcount,
 		alpha:    alpha,
-		receiver: make(chan Note),
-		Sender:   make(chan Note),
+		receiver: make(chan note),
+		Sender:   make(chan Mail),
 	}
 	k.ticker = time.NewTicker(ticktm)
-	go k.run()
 	return k
+}
+
+func (k *Kbucket) Start() {
+	go k.run()
 }
 
 func (k *Kbucket) run() {
@@ -63,21 +86,21 @@ func (k *Kbucket) run() {
 		case <-k.ticker.C:
 			golog.Info("[kbucket.run] routes: ", k.routes)
 		case msg := <-k.receiver:
-			switch msg.Type {
+			switch msg.typ {
 			case nAddNode:
-				n := msg.Arg.(Node)
+				n := msg.arg.(Node)
 				k.add(n)
 			case nDelNode:
-				n := msg.Arg.(Node)
+				n := msg.arg.(Node)
 				k.remove(n)
 			case nFind:
-				nid := msg.Arg.(NodeID)
+				nid := msg.arg.(NodeID)
 				k.find(nid, msg.result)
 			case nFindOne:
-				nid := msg.Arg.(NodeID)
+				nid := msg.arg.(NodeID)
 				k.findOne(nid, msg.result)
 			case nStore:
-				kv := msg.Arg.(struct {
+				kv := msg.arg.(struct {
 					key   string
 					value string
 				})
@@ -89,9 +112,9 @@ func (k *Kbucket) run() {
 
 //AddNode to add a node
 func (k *Kbucket) AddNode(n Node) {
-	k.receiver <- Note{
-		Type: nAddNode,
-		Arg:  n,
+	k.receiver <- note{
+		typ: nAddNode,
+		arg: n,
 	}
 }
 func (k *Kbucket) add(n Node) {
@@ -114,9 +137,9 @@ func (k *Kbucket) add(n Node) {
 
 //RemoveNode to remove a node
 func (k *Kbucket) RemoveNode(n Node) {
-	k.receiver <- Note{
-		Type: nDelNode,
-		Arg:  n,
+	k.receiver <- note{
+		typ: nDelNode,
+		arg: n,
 	}
 }
 func (k *Kbucket) remove(n Node) {
@@ -135,9 +158,9 @@ func (k *Kbucket) remove(n Node) {
 }
 func (k *Kbucket) Find(nid NodeID) (ns []Node, err error) {
 	phone := make(chan interface{})
-	k.receiver <- Note{
-		Type:   nFind,
-		Arg:    nid,
+	k.receiver <- note{
+		typ:    nFind,
+		arg:    nid,
 		result: phone,
 	}
 	result, ok := <-phone
@@ -200,9 +223,9 @@ func (k *Kbucket) find(nid NodeID, phone chan interface{}) {
 
 func (k *Kbucket) FindOne(nid NodeID) (Node, error) {
 	phone := make(chan interface{})
-	k.receiver <- Note{
-		Type:   nFindOne,
-		Arg:    nid,
+	k.receiver <- note{
+		typ:    nFindOne,
+		arg:    nid,
 		result: phone,
 	}
 	result, ok := <-phone
@@ -254,9 +277,9 @@ func (k *Kbucket) findOne(nid NodeID, phone chan interface{}) (Node, error) {
 }
 
 func (k *Kbucket) Store(key, value string) {
-	k.receiver <- Note{
-		Type: nStore,
-		Arg: struct {
+	k.receiver <- note{
+		typ: nStore,
+		arg: struct {
 			key   string
 			value string
 		}{key, value},
@@ -266,12 +289,32 @@ func (k *Kbucket) storeKV(key, value string) {
 	k.store.Put(key, value)
 }
 
-func (k *Kbucket) send(nt NoteType, data interface{}) {
-	switch nt {
-	case NPing:
-		k.Sender <- Note{
-			Type: nt,
-			Arg:  data.(Node),
+func (k *Kbucket) send(mt MailType, data []interface{}) (interface{}, error) {
+	switch mt {
+	case MailPing:
+		mail := Mail{
+			Type:   mt,
+			Arg:    data,
+			Result: make(chan interface{}),
 		}
+		k.Sender <- mail
+		nid, ok := <-mail.Result
+		if !ok {
+			return nil, errors.New("Ping Failed")
+		}
+		return nid, nil
+	case MailFind:
+		mail := Mail{
+			Type:   mt,
+			Arg:    data,
+			Result: make(chan interface{}),
+		}
+		k.Sender <- mail
+		ns, ok := <-mail.Result
+		if !ok {
+			return nil, errors.New("Find Failed")
+		}
+		return ns, nil
 	}
+	return nil, nil
 }

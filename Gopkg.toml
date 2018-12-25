@@ -28,3 +28,7 @@
 [[constraint]]
   branch = "master"
   name = "github.com/kataras/golog"
+
+[[constraint]]
+  name = "github.com/c-bata/go-prompt"
+  version = "0.2.3"

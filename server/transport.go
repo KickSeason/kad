@@ -19,7 +19,7 @@ func NewTransport(s *Server) *Transport {
 	}
 }
 
-func (t *Transport) Dial(addr string, ot time.Duration) (*Peer, error) {
+func (t *Transport) Dial(addr string, ot time.Duration, result chan interface{}) (*Peer, error) {
 	destaddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return &Peer{}, err
@@ -28,7 +28,7 @@ func (t *Transport) Dial(addr string, ot time.Duration) (*Peer, error) {
 	if err != nil {
 		return &Peer{}, err
 	}
-	p := NewPeer(conn.RemoteAddr().String(), conn)
+	p := NewPeer(conn.RemoteAddr().String(), true, result, conn)
 	go t.handleConn(p)
 	return p, nil
 }
@@ -55,7 +55,7 @@ func (t *Transport) Accept() {
 			continue
 		}
 		conn.SetKeepAlive(true)
-		p := NewPeer(conn.RemoteAddr().String(), conn)
+		p := NewPeer(conn.RemoteAddr().String(), false, nil, conn)
 		go t.handleConn(p)
 	}
 }
@@ -70,18 +70,17 @@ func (t *Transport) handleConn(p *Peer) {
 	for {
 		msg := &Message{}
 		if err = msg.Decode(p.conn); err != nil {
-			golog.Error(err)
+			golog.Error("message decode error: ", err)
 			return
 		}
 		if err = t.server.handleMessage(p, msg); err != nil {
-			golog.Error(err)
 			return
 		}
 	}
 }
 
 func (t *Transport) isCloseError(err error) bool {
-	golog.Error(err)
+	golog.Error("[isCloseError]", err)
 	return false
 }
 

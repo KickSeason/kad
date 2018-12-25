@@ -14,18 +14,22 @@ const (
 //Peer a remote node
 type Peer struct {
 	addr   string
-	conn   *net.TCPConn
-	timer  *time.Timer
-	done   chan error
 	closed bool
+	once   bool
+	result chan interface{}
+	done   chan error
+	timer  *time.Timer
+	conn   *net.TCPConn
 }
 
-func NewPeer(addr string, conn *net.TCPConn) *Peer {
+func NewPeer(addr string, isonce bool, result chan interface{}, conn *net.TCPConn) *Peer {
 	p := &Peer{
 		addr:   conn.RemoteAddr().String(),
-		conn:   conn,
-		done:   make(chan error, 1),
 		closed: false,
+		once:   isonce,
+		result: result,
+		done:   make(chan error, 1),
+		conn:   conn,
 	}
 	p.timer = time.NewTimer(peerOut)
 	go p.run()
