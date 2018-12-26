@@ -1,4 +1,4 @@
-package kbucket
+package kbs
 
 import (
 	"bytes"

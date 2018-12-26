@@ -1,4 +1,4 @@
-package kbucket
+package kbs
 
 import (
 	"errors"
@@ -28,9 +28,9 @@ type (
 		Port    uint32
 		ID      NodeID
 	}
-	Kbucket struct {
+	KBS struct {
 		config   *KbConfig
-		routes   map[int]KQue
+		routes   map[int]bucket
 		Self     *Node
 		store    *Storage
 		k        int
@@ -59,12 +59,12 @@ const (
 	ticktm = 5 * time.Second
 )
 
-//New create a kbucket
-func New(config *KbConfig) *Kbucket {
+//New create a KBS
+func NewKBS(config *KbConfig) *KBS {
 	n := NewNode(config.ID, config.LocalIP, config.Port)
-	k := &Kbucket{
+	k := &KBS{
 		config:   config,
-		routes:   make(map[int]KQue, 64),
+		routes:   make(map[int]bucket, 64),
 		Self:     &n,
 		store:    NewStorage(),
 		k:        kcount,
@@ -76,15 +76,15 @@ func New(config *KbConfig) *Kbucket {
 	return k
 }
 
-func (k *Kbucket) Start() {
+func (k *KBS) Start() {
 	go k.run()
 }
 
-func (k *Kbucket) run() {
+func (k *KBS) run() {
 	for {
 		select {
 		case <-k.ticker.C:
-			golog.Info("[kbucket.run] routes: ", k.routes)
+			golog.Info("[KBS.run] routes: ", k.routes)
 		case msg := <-k.receiver:
 			switch msg.typ {
 			case nAddNode:
@@ -111,38 +111,38 @@ func (k *Kbucket) run() {
 }
 
 //AddNode to add a node
-func (k *Kbucket) AddNode(n Node) {
+func (k *KBS) AddNode(n Node) {
 	k.receiver <- note{
 		typ: nAddNode,
 		arg: n,
 	}
 }
-func (k *Kbucket) add(n Node) {
+func (k *KBS) add(n Node) {
 	distance, err := CalDistance(n.ID, k.Self.ID)
 	if err != nil {
 		golog.Error(err)
 	}
 	partion := distance.Partion()
-	var que KQue
+	var bk bucket
 	if _, ok := k.routes[partion]; !ok {
-		que = newKQue(k)
+		bk = newbucket(k)
 	} else {
-		que = k.routes[partion]
+		bk = k.routes[partion]
 	}
-	qptr := &que
-	qptr.updateAdd(n)
-	k.routes[partion] = que
+	qptr := &bk
+	qptr.add(n)
+	k.routes[partion] = bk
 	return
 }
 
 //RemoveNode to remove a node
-func (k *Kbucket) RemoveNode(n Node) {
+func (k *KBS) RemoveNode(n Node) {
 	k.receiver <- note{
 		typ: nDelNode,
 		arg: n,
 	}
 }
-func (k *Kbucket) remove(n Node) {
+func (k *KBS) remove(n Node) {
 	distance, err := CalDistance(n.ID, k.Self.ID)
 	if err != nil {
 		golog.Error(err)
@@ -151,12 +151,12 @@ func (k *Kbucket) remove(n Node) {
 	if _, ok := k.routes[partion]; !ok {
 		return
 	}
-	que := k.routes[partion]
-	que.remove(n)
-	k.routes[partion] = que
+	bk := k.routes[partion]
+	bk.remove(n)
+	k.routes[partion] = bk
 	return
 }
-func (k *Kbucket) Find(nid NodeID) (ns []Node, err error) {
+func (k *KBS) Find(nid NodeID) (ns []Node, err error) {
 	phone := make(chan interface{})
 	k.receiver <- note{
 		typ:    nFind,
@@ -171,7 +171,7 @@ func (k *Kbucket) Find(nid NodeID) (ns []Node, err error) {
 }
 
 //Find find alpha nodes that are closest to the nid
-func (k *Kbucket) find(nid NodeID, phone chan interface{}) {
+func (k *KBS) find(nid NodeID, phone chan interface{}) {
 	defer close(phone)
 	var ns []Node
 	if k.Self.ID.Equal(nid) {
@@ -183,8 +183,8 @@ func (k *Kbucket) find(nid NodeID, phone chan interface{}) {
 		return
 	}
 	partion := dist.Partion()
-	if kq, ok := k.routes[partion]; ok {
-		ns, err = kq.findN(nid, k.alpha)
+	if bk, ok := k.routes[partion]; ok {
+		ns, err = bk.findN(nid, k.alpha)
 		if err != nil {
 			return
 		}
@@ -204,9 +204,9 @@ func (k *Kbucket) find(nid NodeID, phone chan interface{}) {
 	}
 	sort.Sort(p)
 	for _, v := range p.parts {
-		kq, ok := k.routes[v]
+		bk, ok := k.routes[v]
 		if ok {
-			res, err := kq.findN(nid, k.alpha-len(ns))
+			res, err := bk.findN(nid, k.alpha-len(ns))
 			if err != nil {
 				return
 			}
@@ -221,7 +221,7 @@ func (k *Kbucket) find(nid NodeID, phone chan interface{}) {
 	phone <- ns
 }
 
-func (k *Kbucket) FindOne(nid NodeID) (Node, error) {
+func (k *KBS) FindOne(nid NodeID) (Node, error) {
 	phone := make(chan interface{})
 	k.receiver <- note{
 		typ:    nFindOne,
@@ -235,7 +235,7 @@ func (k *Kbucket) FindOne(nid NodeID) (Node, error) {
 	return result.(Node), nil
 }
 
-func (k *Kbucket) findOne(nid NodeID, phone chan interface{}) (Node, error) {
+func (k *KBS) findOne(nid NodeID, phone chan interface{}) (Node, error) {
 	if k.Self.ID.Equal(nid) {
 		return *k.Self, nil
 	}
@@ -276,7 +276,7 @@ func (k *Kbucket) findOne(nid NodeID, phone chan interface{}) (Node, error) {
 	return Node{}, errors.New("NOT FOUND")
 }
 
-func (k *Kbucket) Store(key, value string) {
+func (k *KBS) Store(key, value string) {
 	k.receiver <- note{
 		typ: nStore,
 		arg: struct {
@@ -285,11 +285,11 @@ func (k *Kbucket) Store(key, value string) {
 		}{key, value},
 	}
 }
-func (k *Kbucket) storeKV(key, value string) {
+func (k *KBS) storeKV(key, value string) {
 	k.store.Put(key, value)
 }
 
-func (k *Kbucket) send(mt MailType, data []interface{}) (interface{}, error) {
+func (k *KBS) send(mt MailType, data []interface{}) (interface{}, error) {
 	switch mt {
 	case MailPing:
 		mail := Mail{

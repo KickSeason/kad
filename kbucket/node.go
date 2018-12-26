@@ -1,4 +1,4 @@
-package kbucket
+package kbs
 
 import (
 	"net"
@@ -6,28 +6,26 @@ import (
 
 type (
 	//State state
-	State string
+	state uint8
 	//Node information about a node
 	Node struct {
-		ID    NodeID
-		IP    net.IP
-		Port  uint32
-		State State
+		Port uint32
+		ID   NodeID
+		IP   net.IP
 	}
 )
 
 const (
 	//NSNil nil
-	NSNil State = ""
+	nsnil state = 0x01
 	//NSWaitPong send ping wait for pong
-	NSWaitPong State = "waitforpong"
+	nsping state = 0x02
 )
 
 func NewNode(nid NodeID, ip net.IP, port uint32) Node {
 	return Node{
-		ID:    nid,
-		IP:    ip,
-		Port:  port,
-		State: NSNil,
+		ID:   nid,
+		IP:   ip,
+		Port: port,
 	}
 }

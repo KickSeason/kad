@@ -1,4 +1,4 @@
-package kbucket
+package kbs
 
 import (
 	"fmt"
@@ -6,26 +6,26 @@ import (
 	"github.com/kataras/golog"
 )
 
-//KQue a queue to store nodes
-type KQue struct {
+//bucket a queue to store nodes
+type bucket struct {
 	que    []Node
 	k      int
-	bucket *Kbucket
+	bucket *KBS
 }
 
-func newKQue(k *Kbucket) KQue {
-	return KQue{
+func newbucket(k *KBS) bucket {
+	return bucket{
 		que:    make([]Node, 0, k.k),
 		k:      k.k,
 		bucket: k,
 	}
 }
 
-func (kq *KQue) count() int {
+func (kq *bucket) count() int {
 	return len(kq.que)
 }
 
-func (kq *KQue) findN(nid NodeID, n int) ([]Node, error) {
+func (kq *bucket) findN(nid NodeID, n int) ([]Node, error) {
 	if kq.count() <= n {
 		res := make([]Node, kq.count())
 		for i, v := range kq.que {
@@ -41,7 +41,7 @@ func (kq *KQue) findN(nid NodeID, n int) ([]Node, error) {
 	return li, nil
 }
 
-func (kq *KQue) findOne(nid NodeID) (bool, Node) {
+func (kq *bucket) findOne(nid NodeID) (bool, Node) {
 	if kq.count() == 0 {
 		return false, Node{}
 	}
@@ -56,7 +56,7 @@ func (kq *KQue) findOne(nid NodeID) (bool, Node) {
 	return true, li[0]
 }
 
-func (kq *KQue) has(n Node) bool {
+func (kq *bucket) has(n Node) bool {
 	for _, v := range kq.que {
 		if v.ID.Equal(n.ID) {
 			return true
@@ -64,20 +64,20 @@ func (kq *KQue) has(n Node) bool {
 	}
 	return false
 }
-func (kq *KQue) update(n Node) {
+func (kq *bucket) update(n Node) {
 	arr := []Node{}
 	for _, v := range kq.que {
 		if !v.ID.Equal(n.ID) {
 			arr = append(arr, v)
 		}
 	}
-	if n.State == NSWaitPong {
-		n.State = NSNil
+	if n.state == nsping {
+		n.state = nsnil
 	}
 	arr = append(arr, n)
 	kq.que = arr
 }
-func (kq *KQue) updateAdd(n Node) {
+func (kq *bucket) add(n Node) {
 	if kq.has(n) {
 		kq.update(n)
 		return
@@ -87,17 +87,17 @@ func (kq *KQue) updateAdd(n Node) {
 		return
 	}
 	head := kq.que[0]
-	if head.State == NSWaitPong {
+	if head.state == nsping {
 		return
 	}
-	if head.State == NSNil {
-		head.State = NSWaitPong
+	if head.state == nsnil {
+		head.state = nsping
 		kq.que[0] = head
 		kq.bucket.send(MailPing, []interface{}{head})
 	}
 }
 
-func (kq *KQue) remove(n Node) {
+func (kq *bucket) remove(n Node) {
 	if !kq.has(n) {
 		return
 	}
