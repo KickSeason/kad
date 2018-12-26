@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
-	"github.com/KickSeason/kad/kbucket"
+	"github.com/KickSeason/kad/kbs"
 	"github.com/kataras/golog"
 )
 
 //NodeID the id of this node
-var NodeID kbucket.NodeID
+var NodeID kbs.NodeID
 
 //Seeds peers that configured
 var Seeds []string
@@ -62,10 +62,10 @@ func readNodeInfo() error {
 	if err != nil {
 		golog.Error(err)
 	}
-	NodeID, err = kbucket.NewIDFromString(config.NodeID)
+	NodeID, err = kbs.NewIDFromString(config.NodeID)
 	if err != nil {
 		golog.Error(err)
-		NodeID = kbucket.NewNodeID()
+		NodeID = kbs.NewNodeID()
 		persist()
 	}
 	return nil

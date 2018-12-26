@@ -4,7 +4,7 @@ import (
 	"net"
 
 	"github.com/KickSeason/kad/config"
-	"github.com/KickSeason/kad/kbucket"
+	"github.com/KickSeason/kad/kbs"
 	"github.com/KickSeason/kad/server"
 
 	"github.com/c-bata/go-prompt"
@@ -22,18 +22,18 @@ func interactor(d prompt.Document) []prompt.Suggest {
 func main() {
 	golog.Info("nodeid: " + string(config.NodeID.String()))
 	ip := net.ParseIP(config.Address)
-	c := &kbucket.KbConfig{
+	c := &kbs.KbConfig{
 		Seeds:   config.Seeds,
 		LocalIP: ip,
 		Port:    config.Port,
 		ID:      config.NodeID,
 	}
-	kb := kbucket.New(c)
+	kb := kbs.NewKBS(c)
 	s := server.Config{
-		IP:      ip,
-		Port:    config.Port,
-		Kbucket: kb,
-		Seeds:   config.Seeds,
+		IP:    ip,
+		Port:  config.Port,
+		Kb:    kb,
+		Seeds: config.Seeds,
 	}
 	srv := server.NewServer(s)
 	srv.Start()

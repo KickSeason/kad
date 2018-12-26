@@ -19,7 +19,7 @@ func NewTransport(s *Server) *Transport {
 	}
 }
 
-func (t *Transport) Dial(addr string, ot time.Duration, result chan interface{}) (*Peer, error) {
+func (t *Transport) Dial(addr string, ot time.Duration, once bool, result chan interface{}) (*Peer, error) {
 	destaddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return &Peer{}, err

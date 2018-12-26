@@ -2,6 +2,7 @@ package kbs
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sort"
 	"time"
@@ -37,7 +38,7 @@ type (
 		alpha    int
 		ticker   *time.Ticker
 		receiver chan note
-		Sender   chan Mail
+		Outbox   chan Mail
 	}
 )
 
@@ -50,8 +51,10 @@ const (
 )
 
 const (
-	MailPing MailType = 0x06
-	MailFind MailType = 0x07
+	MailPingSync  MailType = 0x16
+	MailFindSync  MailType = 0x17
+	MailPingAsync MailType = 0x96
+	MailFindAsync MailType = 0x97
 )
 const (
 	kcount = 8
@@ -70,7 +73,7 @@ func NewKBS(config *KbConfig) *KBS {
 		k:        kcount,
 		alpha:    alpha,
 		receiver: make(chan note),
-		Sender:   make(chan Mail),
+		Outbox:   make(chan Mail),
 	}
 	k.ticker = time.NewTicker(ticktm)
 	return k
@@ -84,7 +87,7 @@ func (k *KBS) run() {
 	for {
 		select {
 		case <-k.ticker.C:
-			golog.Info("[KBS.run] routes: ", k.routes)
+			golog.Info("[KBS.run] routes: ", k.ToJson())
 		case msg := <-k.receiver:
 			switch msg.typ {
 			case nAddNode:
@@ -291,30 +294,53 @@ func (k *KBS) storeKV(key, value string) {
 
 func (k *KBS) send(mt MailType, data []interface{}) (interface{}, error) {
 	switch mt {
-	case MailPing:
+	case MailPingSync:
 		mail := Mail{
 			Type:   mt,
 			Arg:    data,
 			Result: make(chan interface{}),
 		}
-		k.Sender <- mail
+		k.Outbox <- mail
 		nid, ok := <-mail.Result
 		if !ok {
 			return nil, errors.New("Ping Failed")
 		}
 		return nid, nil
-	case MailFind:
+	case MailPingAsync:
+		mail := Mail{
+			Type:   mt,
+			Arg:    data,
+			Result: nil,
+		}
+		k.Outbox <- mail
+	case MailFindSync:
 		mail := Mail{
 			Type:   mt,
 			Arg:    data,
 			Result: make(chan interface{}),
 		}
-		k.Sender <- mail
+		k.Outbox <- mail
 		ns, ok := <-mail.Result
 		if !ok {
 			return nil, errors.New("Find Failed")
 		}
 		return ns, nil
+	case MailFindAsync:
+		mail := Mail{
+			Type:   mt,
+			Arg:    data,
+			Result: nil,
+		}
+		k.Outbox <- mail
 	}
 	return nil, nil
+}
+
+func (k *KBS) ToJson() string {
+	jstr := "{["
+	for k, v := range k.routes {
+		jstr += fmt.Sprintf(`{"distance": %d, "nodes": %s}`, k, v.tojson())
+	}
+	jstr += "]}"
+	return string(jstr)
 }

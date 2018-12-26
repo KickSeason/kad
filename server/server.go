@@ -7,17 +7,17 @@ import (
 	"net"
 	"time"
 
-	"github.com/KickSeason/kad/kbucket"
+	"github.com/KickSeason/kad/kbs"
 
 	"github.com/kataras/golog"
 )
 
 //Config configuration of a server
 type Config struct {
-	IP      net.IP
-	Port    uint32
-	Kbucket *kbucket.Kbucket
-	Seeds   []string
+	IP    net.IP
+	Port  uint32
+	Kb    *kbs.KBS
+	Seeds []string
 }
 
 //Server a tcp server
@@ -54,18 +54,18 @@ const (
 
 //Start to start a server
 func (s *Server) Start() {
+	go s.tran.Accept()
+	go s.run()
 	go func() {
 		for _, v := range s.config.Seeds {
-			p, err := s.tran.Dial(v, outtime, nil)
+			p, err := s.tran.Dial(v, outtime, true, nil)
 			if err != nil {
 				golog.Error("[server.tran.dia]", err)
 				continue
 			}
-			s.sendFind(p, s.config.Kbucket.Self.ID)
+			s.sendFind(p, s.config.Kb.Self.ID)
 		}
 	}()
-	go s.tran.Accept()
-	go s.run()
 }
 
 func (s *Server) run() {
@@ -81,12 +81,16 @@ func (s *Server) run() {
 			s.removePeer(p)
 		case <-s.ticker.C:
 
-		case n := <-s.config.Kbucket.Sender:
+		case n := <-s.config.Kb.Outbox:
 			switch n.Type {
-			case kbucket.MailPing:
-				s.DialAndPing(n.Arg[0].(kbucket.Node), n.Result)
-			case kbucket.MailFind:
-				s.DialAndFind(n.Arg[0].(kbucket.Node), n.Arg[1].(kbucket.NodeID))
+			case kbs.MailPingSync:
+				s.DialAndPing(n.Arg[0].(kbs.Node), n.Result)
+			case kbs.MailFindSync:
+				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node))
+			case kbs.MailPingAsync:
+				s.DialAndPing(n.Arg[0].(kbs.Node), nil)
+			case kbs.MailFindAsync:
+				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node))
 			}
 		}
 	}
@@ -98,25 +102,25 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 		var ping PingMsg
 		err := json.Unmarshal(m.data, &ping)
 		if err != nil {
-			golog.Error("[handleMessage]", err)
+			golog.Error("[handlePing]", err)
 			return err
 		}
-		n := kbucket.NewNode(ping.NodeID, m.ip[:], m.port)
+		n := kbs.NewNode(ping.NodeID, m.ip[:], m.port)
 		s.addRemoteNode(p, &n)
-		return s.sendPong(p, s.config.Kbucket.Self.ID)
+		return s.sendPong(p, s.config.Kb.Self.ID)
 	case MSGPong:
 		var pong PongMsg
 		err := json.Unmarshal(m.data, &pong)
 		if err != nil {
-			golog.Error("[handleMessage]", err)
+			golog.Error("[handlePong]", err)
 			return err
 		}
 		if p.once && p.result != nil {
 			p.result <- pong.NodeID
 			return nil
 		}
-		n := kbucket.NewNode(pong.NodeID, m.ip[:], m.port)
-		s.config.Kbucket.AddNode(n)
+		n := kbs.NewNode(pong.NodeID, m.ip[:], m.port)
+		s.config.Kb.AddNode(n)
 		s.addRemoteNode(p, &n)
 		return nil
 	case MSGFind:
@@ -126,12 +130,12 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			golog.Error("[handleMessage]", err)
 			return err
 		}
-		n := kbucket.NewNode(find.NodeID, m.ip[:], m.port)
-		s.config.Kbucket.AddNode(n)
+		n := kbs.NewNode(find.NodeID, m.ip[:], m.port)
+		s.config.Kb.AddNode(n)
 		s.addRemoteNode(p, &n)
-		ns, err := s.config.Kbucket.Find(find.FindID)
+		ns, err := s.config.Kb.Find(find.FindID)
 		if err != nil {
-			golog.Error("[handleMessage]", err)
+			golog.Error("[handleFind]", err)
 			return err
 		}
 		return s.sendFindAck(p, find.NodeID, ns)
@@ -139,21 +143,22 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 		var findack FindAckMsg
 		err := json.Unmarshal(m.data, &findack)
 		if err != nil {
-			golog.Error("[handleMessage]", err)
+			golog.Error("[handleFindAck]", err)
 			return err
 		}
-		n := kbucket.NewNode(findack.NodeID, m.ip[:], m.port)
-		s.config.Kbucket.AddNode(n)
+		golog.Info("findack", findack)
+		n := kbs.NewNode(findack.NodeID, m.ip[:], m.port)
+		s.config.Kb.AddNode(n)
 		s.addRemoteNode(p, &n)
 		for _, v := range findack.Nodes {
-			s.config.Kbucket.AddNode(v)
+			s.config.Kb.AddNode(v)
 		}
 	}
 	return nil
 }
-func (s *Server) sendFind(p *Peer, nid kbucket.NodeID) error {
+func (s *Server) sendFind(p *Peer, nid kbs.NodeID) error {
 	find := FindMsg{
-		NodeID: s.config.Kbucket.Self.ID,
+		NodeID: s.config.Kb.Self.ID,
 		FindID: nid,
 	}
 	data, err := json.Marshal(find)
@@ -164,9 +169,9 @@ func (s *Server) sendFind(p *Peer, nid kbucket.NodeID) error {
 	msg := NewMessage(MAGIC, MSGFind, s.config.IP, s.config.Port, data)
 	return p.Write(msg)
 }
-func (s *Server) sendFindAck(p *Peer, nid kbucket.NodeID, ns []kbucket.Node) error {
+func (s *Server) sendFindAck(p *Peer, nid kbs.NodeID, ns []kbs.Node) error {
 	findack := FindAckMsg{
-		NodeID: s.config.Kbucket.Self.ID,
+		NodeID: s.config.Kb.Self.ID,
 		FindID: nid,
 		Nodes:  ns,
 	}
@@ -175,13 +180,13 @@ func (s *Server) sendFindAck(p *Peer, nid kbucket.NodeID, ns []kbucket.Node) err
 		golog.Error("[sendFindAck]", err)
 		return err
 	}
-	msg := NewMessage(MAGIC, MSGFind, s.config.IP, s.config.Port, data)
+	msg := NewMessage(MAGIC, MSgFindAck, s.config.IP, s.config.Port, data)
 	return p.Write(msg)
 }
 
-func (s *Server) sendPong(p *Peer, nid kbucket.NodeID) error {
+func (s *Server) sendPong(p *Peer, nid kbs.NodeID) error {
 	pong := PongMsg{
-		NodeID: s.config.Kbucket.Self.ID,
+		NodeID: s.config.Kb.Self.ID,
 	}
 	data, err := json.Marshal(pong)
 	if err != nil {
@@ -193,7 +198,7 @@ func (s *Server) sendPong(p *Peer, nid kbucket.NodeID) error {
 }
 func (s *Server) sendPing(p *Peer) error {
 	ping := PingMsg{
-		NodeID: s.config.Kbucket.Self.ID,
+		NodeID: s.config.Kb.Self.ID,
 	}
 	data, err := json.Marshal(ping)
 	if err != nil {
@@ -202,6 +207,34 @@ func (s *Server) sendPing(p *Peer) error {
 	}
 	msg := NewMessage(MAGIC, MSGPing, s.config.IP, s.config.Port, data)
 	return p.Write(msg)
+}
+
+func (s *Server) DialAndPing(n kbs.Node, result chan interface{}) error {
+	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
+	if p, ok := s.peers[address]; ok {
+		p.result = result
+		return s.sendPing(p)
+	}
+	p, err := s.tran.Dial(address, outtime, true, result)
+	if err != nil {
+		close(result)
+		golog.Error("[server.dial] err: ", err)
+		return err
+	}
+	return s.sendPing(p)
+}
+
+func (s *Server) DialAndFind(nid kbs.NodeID, n kbs.Node) error {
+	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
+	if p, ok := s.peers[address]; ok {
+		return s.sendFind(p, nid)
+	}
+	p, err := s.tran.Dial(address, outtime, true, nil)
+	if err != nil {
+		golog.Error("[server.dial] err: ", err)
+		return err
+	}
+	return s.sendFind(p, nid)
 }
 
 func (s *Server) addPeer(p *Peer) {
@@ -222,7 +255,7 @@ func (s *Server) removePeer(p *Peer) {
 	delete(s.remotes, key)
 }
 
-func (s *Server) addRemoteNode(p *Peer, n *kbucket.Node) {
+func (s *Server) addRemoteNode(p *Peer, n *kbs.Node) {
 	if p.once {
 		p.Disconnect(errors.New("positive"))
 		return
@@ -230,32 +263,6 @@ func (s *Server) addRemoteNode(p *Peer, n *kbucket.Node) {
 	rn := NewRemoteNode(p, n.IP, n.Port, n.ID)
 	address := fmt.Sprintf("%s:%d", rn.IP, rn.Port)
 	s.remotes[address] = rn
-}
-func (s *Server) DialAndPing(n kbucket.Node, result chan interface{}) error {
-	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
-	if p, ok := s.peers[address]; ok {
-		return s.sendPing(p)
-	}
-	p, err := s.tran.Dial(address, outtime, result)
-	if err != nil {
-		close(result)
-		golog.Error("[server.dial] err: ", err)
-		return err
-	}
-	return s.sendPing(p)
-}
-
-func (s *Server) DialAndFind(n kbucket.Node, nid kbucket.NodeID) error {
-	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
-	if p, ok := s.peers[address]; ok {
-		return s.sendFind(p, nid)
-	}
-	p, err := s.tran.Dial(address, outtime, nil)
-	if err != nil {
-		golog.Error("[server.dial] err: ", err)
-		return err
-	}
-	return s.sendFind(p, nid)
 }
 
 func (s *Server) Shutdown() {

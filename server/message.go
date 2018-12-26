@@ -8,7 +8,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/KickSeason/kad/kbucket"
+	"github.com/KickSeason/kad/kbs"
 )
 
 type MsgType uint8
@@ -22,27 +22,27 @@ const (
 )
 
 type PingMsg struct {
-	NodeID kbucket.NodeID `json: "nodeid"`
+	NodeID kbs.NodeID `json: "nodeid"`
 }
 
 type PongMsg struct {
-	NodeID kbucket.NodeID `json: "nodeid"`
+	NodeID kbs.NodeID `json: "nodeid"`
 }
 
 type FindMsg struct {
-	NodeID kbucket.NodeID `json: "nodeid"`
-	FindID kbucket.NodeID `json: "findid"`
+	NodeID kbs.NodeID `json: "nodeid"`
+	FindID kbs.NodeID `json: "findid"`
 }
 
 type FindAckMsg struct {
-	NodeID kbucket.NodeID `json: "nodeid"`
-	FindID kbucket.NodeID `json: "findid"`
-	Nodes  []kbucket.Node `json: "nodes"`
+	NodeID kbs.NodeID `json: "nodeid"`
+	FindID kbs.NodeID `json: "findid"`
+	Nodes  []kbs.Node `json: "nodes"`
 }
 type StoreMsg struct {
-	NodeID kbucket.NodeID `json: "nodeid"`
-	key    string         `json: "key"`
-	value  string         `json: "value"`
+	NodeID kbs.NodeID `json: "nodeid"`
+	key    string     `json: "key"`
+	value  string     `json: "value"`
 }
 
 const (
