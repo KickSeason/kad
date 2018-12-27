@@ -1,7 +1,6 @@
 package kbs
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -105,6 +104,12 @@ func (b *bucket) replace(nid NodeID, n Node) {
 	b.que = arr
 }
 func (b *bucket) add(n Node) {
+	isNew := false
+	defer func(isNew bool) {
+		if isNew {
+			b.kbs.send(MailFindAsync, []interface{}{b.kbs.Self.ID, n})
+		}
+	}(isNew)
 	if b.has(n) {
 		b.update(n)
 		return
@@ -113,7 +118,7 @@ func (b *bucket) add(n Node) {
 		b.mutex.Lock()
 		b.que = append(b.que, n)
 		b.mutex.Unlock()
-		b.kbs.send(MailFindAsync, []interface{}{b.kbs.Self.ID, n})
+		isNew = true
 		return
 	}
 
@@ -132,6 +137,7 @@ func (b *bucket) add(n Node) {
 		return
 	}
 	b.replace(head.ID, n)
+	isNew = true
 }
 
 func (b *bucket) remove(n Node) {
@@ -150,12 +156,15 @@ func (b *bucket) remove(n Node) {
 }
 
 func (b *bucket) tojson() string {
-	bytes, err := json.Marshal(b.que)
-	if err != nil {
-		golog.Error("[bucket.tojson] ", err)
-		return ""
+	jstr := "["
+	for i, v := range b.que {
+		if 0 < i {
+			jstr += ","
+		}
+		jstr += v.ToJson()
 	}
-	return string(bytes)
+	jstr += "]"
+	return jstr
 }
 
 func findClosestOne(nid NodeID, nodes []Node) ([]Node, error) {

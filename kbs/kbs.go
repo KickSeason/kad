@@ -48,6 +48,7 @@ const (
 	nFindOne notetype = 0x03
 	nFind    notetype = 0x04
 	nStore   notetype = 0x05
+	nGet     notetype = 0x06
 )
 
 const (
@@ -87,7 +88,7 @@ func (k *KBS) run() {
 	for {
 		select {
 		case <-k.ticker.C:
-			golog.Info("[KBS.run] routes: ", k.ToJson())
+			//golog.Info("[KBS.run] routes: ", k.ToJson())
 		case msg := <-k.receiver:
 			switch msg.typ {
 			case nAddNode:
@@ -108,6 +109,9 @@ func (k *KBS) run() {
 					value string
 				})
 				k.storeKV(kv.key, kv.value)
+			case nGet:
+				key := msg.arg.(string)
+				k.get(key, msg.result)
 			}
 		}
 	}
@@ -121,6 +125,9 @@ func (k *KBS) AddNode(n Node) {
 	}
 }
 func (k *KBS) add(n Node) {
+	if n.ID.Equal(k.Self.ID) {
+		return
+	}
 	distance, err := CalDistance(n.ID, k.Self.ID)
 	if err != nil {
 		golog.Error(err)
@@ -178,6 +185,7 @@ func (k *KBS) find(nid NodeID, phone chan interface{}) {
 	defer close(phone)
 	var ns []Node
 	if k.Self.ID.Equal(nid) {
+		phone <- []interface{}{nid}
 		return
 	}
 	dist, err := CalDistance(nid, k.Self.ID)
@@ -279,6 +287,10 @@ func (k *KBS) findOne(nid NodeID, phone chan interface{}) (Node, error) {
 	return Node{}, errors.New("NOT FOUND")
 }
 
+func (k *KBS) KeyToID(key string) NodeID {
+	return NodeID{}
+}
+
 func (k *KBS) Store(key, value string) {
 	k.receiver <- note{
 		typ: nStore,
@@ -288,8 +300,32 @@ func (k *KBS) Store(key, value string) {
 		}{key, value},
 	}
 }
+
 func (k *KBS) storeKV(key, value string) {
 	k.store.Put(key, value)
+}
+
+func (k *KBS) Get(key string) (string, error) {
+	phone := make(chan interface{})
+	k.receiver <- note{
+		typ:    nGet,
+		arg:    key,
+		result: phone,
+	}
+	result, ok := <-phone
+	if !ok {
+		return "", errors.New("Not Found")
+	}
+	return result.(string), nil
+}
+
+func (k *KBS) get(key string, result chan interface{}) {
+	defer close(result)
+	value, err := k.store.Get(key)
+	if err != nil {
+		result <- value
+		return
+	}
 }
 
 func (k *KBS) send(mt MailType, data []interface{}) (interface{}, error) {

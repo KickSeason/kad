@@ -130,6 +130,7 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			golog.Error("[handleMessage]", err)
 			return err
 		}
+		golog.Info("[handleFind] ", string(m.data))
 		n := kbs.NewNode(find.NodeID, m.ip[:], m.port)
 		s.config.Kb.AddNode(n)
 		s.addRemoteNode(p, &n)
@@ -146,7 +147,7 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			golog.Error("[handleFindAck]", err)
 			return err
 		}
-		golog.Info("findack", findack)
+		golog.Info("[handleFindAck]", string(m.data))
 		n := kbs.NewNode(findack.NodeID, m.ip[:], m.port)
 		s.config.Kb.AddNode(n)
 		s.addRemoteNode(p, &n)

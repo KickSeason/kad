@@ -1,6 +1,7 @@
 package kbs
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -31,4 +32,8 @@ func NewNode(nid NodeID, ip net.IP, port uint32) Node {
 		Port:  port,
 		state: nsnil,
 	}
+}
+
+func (n *Node) ToJson() string {
+	return fmt.Sprintf(`{"ID": "%s", "IP": "%s", "Port": %d}`, n.ID.String(), n.IP.String(), n.Port)
 }
