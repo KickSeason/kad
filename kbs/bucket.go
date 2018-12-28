@@ -1,7 +1,6 @@
 package kbs
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/kataras/golog"
@@ -29,7 +28,7 @@ func (b *bucket) count() int {
 	return len(b.que)
 }
 
-func (b *bucket) findN(nid NodeID, n int) ([]Node, error) {
+func (b *bucket) find(nid NodeID, n int) ([]Node, error) {
 	if b.count() <= n {
 		res := make([]Node, b.count())
 		b.mutex.Lock()
@@ -42,28 +41,10 @@ func (b *bucket) findN(nid NodeID, n int) ([]Node, error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	li, err := findClosestN(n, nid, b.que)
-	fmt.Println(li)
 	if err != nil {
 		return []Node{}, err
 	}
 	return li, nil
-}
-
-func (b *bucket) findOne(nid NodeID) (bool, Node) {
-	if b.count() == 0 {
-		return false, Node{}
-	}
-	if b.count() == 1 {
-		return true, b.que[0]
-	}
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	li, err := findClosestOne(nid, b.que)
-	if err != nil {
-		golog.Error("[b.findOne]", err)
-		return false, Node{}
-	}
-	return true, li[0]
 }
 
 func (b *bucket) has(n Node) bool {
@@ -165,10 +146,6 @@ func (b *bucket) tojson() string {
 	}
 	jstr += "]"
 	return jstr
-}
-
-func findClosestOne(nid NodeID, nodes []Node) ([]Node, error) {
-	return findClosestN(1, nid, nodes)
 }
 
 func findClosestN(k int, nid NodeID, nodes []Node) ([]Node, error) {

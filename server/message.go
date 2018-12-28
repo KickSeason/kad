@@ -39,6 +39,22 @@ type FindAckMsg struct {
 	FindID kbs.NodeID `json: "findid"`
 	Nodes  []kbs.Node `json: "nodes"`
 }
+
+func (f *FindAckMsg) ToJson() string {
+	jstr := "{"
+	jstr += fmt.Sprintf(`"nodeid": "%s",`, f.NodeID.String())
+	jstr += fmt.Sprintf(`"findid": "%s",`, f.FindID.String())
+	jstr += `"nodes":[`
+	for i, v := range f.Nodes {
+		if 0 < i {
+			jstr += ","
+		}
+		jstr += v.ToJson()
+	}
+	jstr += "]}"
+	return jstr
+}
+
 type StoreMsg struct {
 	NodeID kbs.NodeID `json: "nodeid"`
 	key    string     `json: "key"`

@@ -15,17 +15,17 @@ const (
 type Peer struct {
 	addr   string
 	closed bool
-	once   bool
+	sync   bool
 	result chan interface{}
 	done   chan error
 	conn   *net.TCPConn
 }
 
-func NewPeer(addr string, isonce bool, result chan interface{}, conn *net.TCPConn) *Peer {
+func NewPeer(addr string, sync bool, result chan interface{}, conn *net.TCPConn) *Peer {
 	p := &Peer{
 		addr:   conn.RemoteAddr().String(),
 		closed: false,
-		once:   isonce,
+		sync:   sync,
 		result: result,
 		done:   make(chan error, 1),
 		conn:   conn,

@@ -42,6 +42,7 @@ func main() {
 	srv.Start()
 	kb.Start()
 	fmt.Println("my kademlia impl")
+	go kb.Find(config.NodeID)
 	for running {
 		t := prompt.Input("> ", interactor)
 		switch t {

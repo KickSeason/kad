@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/kataras/golog"
@@ -15,7 +18,7 @@ type (
 	MailType uint8
 	note     struct {
 		typ    notetype
-		arg    interface{}
+		arg    []interface{}
 		result chan interface{}
 	}
 	Mail struct {
@@ -82,6 +85,15 @@ func NewKBS(config *KbConfig) *KBS {
 
 func (k *KBS) Start() {
 	go k.run()
+	for _, v := range k.config.Seeds {
+		ip := net.ParseIP(strings.Split(v, ":")[0])
+		port, err := strconv.Atoi(strings.Split(v, ":")[1])
+		if err != nil {
+			continue
+		}
+		n := NewNode(NewNodeID(), ip, uint32(port))
+		k.send(MailPingSync, []interface{}{n})
+	}
 }
 
 func (k *KBS) run() {
@@ -92,25 +104,21 @@ func (k *KBS) run() {
 		case msg := <-k.receiver:
 			switch msg.typ {
 			case nAddNode:
-				n := msg.arg.(Node)
+				n := msg.arg[0].(Node)
 				k.add(n)
 			case nDelNode:
-				n := msg.arg.(Node)
+				n := msg.arg[0].(Node)
 				k.remove(n)
 			case nFind:
-				nid := msg.arg.(NodeID)
-				k.find(nid, msg.result)
-			case nFindOne:
-				nid := msg.arg.(NodeID)
-				k.findOne(nid, msg.result)
+				nid := msg.arg[0].(NodeID)
+				selfinclude := msg.arg[1].(bool)
+				k.findLocal(nid, selfinclude, msg.result)
 			case nStore:
-				kv := msg.arg.(struct {
-					key   string
-					value string
-				})
-				k.storeKV(kv.key, kv.value)
+				key := msg.arg[0].(string)
+				value := msg.arg[1].(string)
+				k.storeKV(key, value)
 			case nGet:
-				key := msg.arg.(string)
+				key := msg.arg[0].(string)
 				k.get(key, msg.result)
 			}
 		}
@@ -121,7 +129,7 @@ func (k *KBS) run() {
 func (k *KBS) AddNode(n Node) {
 	k.receiver <- note{
 		typ: nAddNode,
-		arg: n,
+		arg: []interface{}{n},
 	}
 }
 func (k *KBS) add(n Node) {
@@ -149,7 +157,7 @@ func (k *KBS) add(n Node) {
 func (k *KBS) RemoveNode(n Node) {
 	k.receiver <- note{
 		typ: nDelNode,
-		arg: n,
+		arg: []interface{}{n},
 	}
 }
 func (k *KBS) remove(n Node) {
@@ -166,26 +174,27 @@ func (k *KBS) remove(n Node) {
 	k.routes[partion] = bk
 	return
 }
-func (k *KBS) Find(nid NodeID) (ns []Node, err error) {
+func (k *KBS) FindLocal(nid NodeID, selfinclude bool) (ns []Node, err error) {
 	phone := make(chan interface{})
 	k.receiver <- note{
 		typ:    nFind,
-		arg:    nid,
+		arg:    []interface{}{nid, selfinclude},
 		result: phone,
 	}
 	result, ok := <-phone
 	if !ok {
 		return ns, errors.New("Failed")
 	}
+	golog.Info("[KBS.FindLocal] ", result.([]Node))
 	return result.([]Node), nil
 }
 
 //Find find alpha nodes that are closest to the nid
-func (k *KBS) find(nid NodeID, phone chan interface{}) {
+func (k *KBS) findLocal(nid NodeID, selfinclude bool, phone chan interface{}) {
 	defer close(phone)
 	var ns []Node
-	if k.Self.ID.Equal(nid) {
-		phone <- []interface{}{nid}
+	if selfinclude && k.Self.ID.Equal(nid) {
+		phone <- []Node{*k.Self}
 		return
 	}
 	dist, err := CalDistance(nid, k.Self.ID)
@@ -195,14 +204,16 @@ func (k *KBS) find(nid NodeID, phone chan interface{}) {
 	}
 	partion := dist.Partion()
 	if bk, ok := k.routes[partion]; ok {
-		ns, err = bk.findN(nid, k.alpha)
+		ns, err = bk.find(nid, k.alpha)
 		if err != nil {
 			return
 		}
 	}
 	if k.alpha <= len(ns) {
+		phone <- ns
 		return
 	}
+	ns = []Node{}
 	pslice := make([]int, len(k.routes))
 	i := 0
 	for key := range k.routes {
@@ -217,7 +228,7 @@ func (k *KBS) find(nid NodeID, phone chan interface{}) {
 	for _, v := range p.parts {
 		bk, ok := k.routes[v]
 		if ok {
-			res, err := bk.findN(nid, k.alpha-len(ns))
+			res, err := bk.find(nid, k.alpha-len(ns))
 			if err != nil {
 				return
 			}
@@ -229,62 +240,9 @@ func (k *KBS) find(nid NodeID, phone chan interface{}) {
 			}
 		}
 	}
-	phone <- ns
-}
-
-func (k *KBS) FindOne(nid NodeID) (Node, error) {
-	phone := make(chan interface{})
-	k.receiver <- note{
-		typ:    nFindOne,
-		arg:    nid,
-		result: phone,
+	if 0 < len(ns) {
+		phone <- ns
 	}
-	result, ok := <-phone
-	if !ok {
-		return Node{}, errors.New("Failed")
-	}
-	return result.(Node), nil
-}
-
-func (k *KBS) findOne(nid NodeID, phone chan interface{}) (Node, error) {
-	if k.Self.ID.Equal(nid) {
-		return *k.Self, nil
-	}
-	dist, err := CalDistance(nid, k.Self.ID)
-	if err != nil {
-		golog.Error(err)
-		return Node{}, nil
-	}
-	partion := dist.Partion()
-	kq, ok := k.routes[partion]
-	if ok {
-		ok, n := kq.findOne(nid)
-		if ok {
-			return n, nil
-		}
-	}
-
-	pslice := make([]int, len(k.routes))
-	i := 0
-	for key := range k.routes {
-		pslice[i] = key
-		i++
-	}
-	p := Partions{
-		parts: pslice,
-		base:  partion,
-	}
-	sort.Sort(p)
-	for _, v := range p.parts {
-		kq, ok := k.routes[v]
-		if ok {
-			ok, n := kq.findOne(nid)
-			if ok {
-				return n, nil
-			}
-		}
-	}
-	return Node{}, errors.New("NOT FOUND")
 }
 
 func (k *KBS) KeyToID(key string) NodeID {
@@ -294,10 +252,7 @@ func (k *KBS) KeyToID(key string) NodeID {
 func (k *KBS) Store(key, value string) {
 	k.receiver <- note{
 		typ: nStore,
-		arg: struct {
-			key   string
-			value string
-		}{key, value},
+		arg: []interface{}{key, value},
 	}
 }
 
@@ -309,7 +264,7 @@ func (k *KBS) Get(key string) (string, error) {
 	phone := make(chan interface{})
 	k.receiver <- note{
 		typ:    nGet,
-		arg:    key,
+		arg:    []interface{}{key},
 		result: phone,
 	}
 	result, ok := <-phone
@@ -370,6 +325,43 @@ func (k *KBS) send(mt MailType, data []interface{}) (interface{}, error) {
 		k.Outbox <- mail
 	}
 	return nil, nil
+}
+
+func foundExactly(nid NodeID, ns []Node) bool {
+	return len(ns) == 1 && ns[0].ID.Equal(nid)
+}
+func (k *KBS) Find(nid NodeID) (Node, error) {
+	var lastns []Node
+	ns, err := k.FindLocal(nid, false)
+	if err != nil {
+		golog.Error("[Find] ", err)
+		return Node{}, err
+	}
+	if foundExactly(nid, ns) {
+		return ns[0], nil
+	}
+	golog.Info("start loop:")
+	for len(lastns) == 0 || !lastns[0].ID.Equal(ns[0].ID) {
+		var wg sync.WaitGroup
+		wg.Add(len(ns))
+		for _, v := range ns {
+			go func(nid NodeID, n Node) {
+				k.send(MailFindSync, []interface{}{nid, n})
+				wg.Done()
+			}(nid, v)
+		}
+		wg.Wait()
+		lastns = ns
+		ns, err = k.FindLocal(nid, false)
+		if err != nil {
+			golog.Error("[Find] ", err)
+			return Node{}, err
+		}
+		if foundExactly(nid, ns) {
+			return ns[0], nil
+		}
+	}
+	return ns[0], nil
 }
 
 func (k *KBS) ToJson() string {

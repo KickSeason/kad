@@ -24,8 +24,6 @@ type Config struct {
 type Server struct {
 	config     Config
 	tran       *Transport
-	peers      map[string]*Peer
-	remotes    map[string]*RemoteNode
 	register   chan *Peer
 	unregister chan *Peer
 	quit       chan struct{}
@@ -37,8 +35,6 @@ type Server struct {
 func NewServer(config Config) *Server {
 	s := &Server{
 		config:     config,
-		peers:      make(map[string]*Peer, 64),
-		remotes:    make(map[string]*RemoteNode, 64),
 		register:   make(chan *Peer),
 		unregister: make(chan *Peer),
 		errch:      make(chan error),
@@ -56,16 +52,6 @@ const (
 func (s *Server) Start() {
 	go s.tran.Accept()
 	go s.run()
-	go func() {
-		for _, v := range s.config.Seeds {
-			p, err := s.tran.Dial(v, outtime, true, nil)
-			if err != nil {
-				golog.Error("[server.tran.dia]", err)
-				continue
-			}
-			s.sendFind(p, s.config.Kb.Self.ID)
-		}
-	}()
 }
 
 func (s *Server) run() {
@@ -75,28 +61,32 @@ func (s *Server) run() {
 			s.close()
 			return
 		case p := <-s.register:
-			s.addPeer(p)
+			golog.Info("[server.run] register peer: ", p.addr)
 		case p := <-s.unregister:
-			golog.Info("[server.run] unregister peer: ", p)
-			s.removePeer(p)
+			golog.Info("[server.run] unregister peer: ", p.addr)
 		case <-s.ticker.C:
 
 		case n := <-s.config.Kb.Outbox:
 			switch n.Type {
 			case kbs.MailPingSync:
-				s.DialAndPing(n.Arg[0].(kbs.Node), n.Result)
+				s.DialAndPing(n.Arg[0].(kbs.Node), true, n.Result)
 			case kbs.MailFindSync:
-				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node))
+				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node), true, n.Result)
 			case kbs.MailPingAsync:
-				s.DialAndPing(n.Arg[0].(kbs.Node), nil)
+				s.DialAndPing(n.Arg[0].(kbs.Node), false, nil)
 			case kbs.MailFindAsync:
-				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node))
+				s.DialAndFind(n.Arg[0].(kbs.NodeID), n.Arg[1].(kbs.Node), false, nil)
 			}
 		}
 	}
 }
 
 func (s *Server) handleMessage(p *Peer, m *Message) error {
+	defer func(p *Peer) {
+		if p.sync {
+			close(p.result)
+		}
+	}(p)
 	switch m.code {
 	case MSGPing:
 		var ping PingMsg
@@ -106,7 +96,7 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			return err
 		}
 		n := kbs.NewNode(ping.NodeID, m.ip[:], m.port)
-		s.addRemoteNode(p, &n)
+		s.config.Kb.AddNode(n)
 		return s.sendPong(p, s.config.Kb.Self.ID)
 	case MSGPong:
 		var pong PongMsg
@@ -115,13 +105,12 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			golog.Error("[handlePong]", err)
 			return err
 		}
-		if p.once && p.result != nil {
+		if p.sync {
 			p.result <- pong.NodeID
-			return nil
 		}
 		n := kbs.NewNode(pong.NodeID, m.ip[:], m.port)
 		s.config.Kb.AddNode(n)
-		s.addRemoteNode(p, &n)
+		p.Disconnect(errors.New("Positive"))
 		return nil
 	case MSGFind:
 		var find FindMsg
@@ -133,8 +122,7 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 		golog.Info("[handleFind] ", string(m.data))
 		n := kbs.NewNode(find.NodeID, m.ip[:], m.port)
 		s.config.Kb.AddNode(n)
-		s.addRemoteNode(p, &n)
-		ns, err := s.config.Kb.Find(find.FindID)
+		ns, err := s.config.Kb.FindLocal(find.FindID, true)
 		if err != nil {
 			golog.Error("[handleFind]", err)
 			return err
@@ -147,13 +135,16 @@ func (s *Server) handleMessage(p *Peer, m *Message) error {
 			golog.Error("[handleFindAck]", err)
 			return err
 		}
-		golog.Info("[handleFindAck]", string(m.data))
+		golog.Info("[handleFindAck]", findack.ToJson())
 		n := kbs.NewNode(findack.NodeID, m.ip[:], m.port)
 		s.config.Kb.AddNode(n)
-		s.addRemoteNode(p, &n)
 		for _, v := range findack.Nodes {
 			s.config.Kb.AddNode(v)
 		}
+		if p.sync {
+			p.result <- findack.Nodes
+		}
+		p.Disconnect(errors.New("Positive"))
 	}
 	return nil
 }
@@ -210,13 +201,9 @@ func (s *Server) sendPing(p *Peer) error {
 	return p.Write(msg)
 }
 
-func (s *Server) DialAndPing(n kbs.Node, result chan interface{}) error {
+func (s *Server) DialAndPing(n kbs.Node, async bool, result chan interface{}) error {
 	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
-	if p, ok := s.peers[address]; ok {
-		p.result = result
-		return s.sendPing(p)
-	}
-	p, err := s.tran.Dial(address, outtime, true, result)
+	p, err := s.tran.Dial(address, outtime, async, result)
 	if err != nil {
 		close(result)
 		golog.Error("[server.dial] err: ", err)
@@ -225,45 +212,14 @@ func (s *Server) DialAndPing(n kbs.Node, result chan interface{}) error {
 	return s.sendPing(p)
 }
 
-func (s *Server) DialAndFind(nid kbs.NodeID, n kbs.Node) error {
+func (s *Server) DialAndFind(nid kbs.NodeID, n kbs.Node, async bool, result chan interface{}) error {
 	address := fmt.Sprintf("%s:%d", n.IP.String(), n.Port)
-	if p, ok := s.peers[address]; ok {
-		return s.sendFind(p, nid)
-	}
-	p, err := s.tran.Dial(address, outtime, true, nil)
+	p, err := s.tran.Dial(address, outtime, async, result)
 	if err != nil {
 		golog.Error("[server.dial] err: ", err)
 		return err
 	}
 	return s.sendFind(p, nid)
-}
-
-func (s *Server) addPeer(p *Peer) {
-	if _, ok := s.peers[p.addr]; ok {
-		return
-	}
-	s.peers[p.addr] = p
-}
-func (s *Server) removePeer(p *Peer) {
-	delete(s.peers, p.addr)
-	key := ""
-	for k, v := range s.remotes {
-		if v.peer == p {
-			key = k
-			break
-		}
-	}
-	delete(s.remotes, key)
-}
-
-func (s *Server) addRemoteNode(p *Peer, n *kbs.Node) {
-	if p.once {
-		p.Disconnect(errors.New("positive"))
-		return
-	}
-	rn := NewRemoteNode(p, n.IP, n.Port, n.ID)
-	address := fmt.Sprintf("%s:%d", rn.IP, rn.Port)
-	s.remotes[address] = rn
 }
 
 func (s *Server) Shutdown() {
@@ -272,8 +228,5 @@ func (s *Server) Shutdown() {
 
 func (s *Server) close() {
 	s.tran.Close()
-	for _, v := range s.peers {
-		v.Disconnect(errors.New("Stopped manully"))
-	}
 	s.ticker.Stop()
 }
